@@ -1,0 +1,61 @@
+package controller;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** 簡單的訂單資料結構（維持陽春寫法、好懂好改） */
+public class Order {
+
+    /** 單一購買項目 */
+    public static class Item {
+        private String categoryName; // 類別：CPU/主機板/記憶體/顯示卡/SSD/電源/機殼
+        private String productName;  // 產品名稱
+        private int unitPrice;       // 單價
+        private int quantity;        // 數量
+
+        public Item(String categoryName, String productName, int unitPrice, int quantity) {
+            this.categoryName = categoryName;
+            this.productName = productName;
+            this.unitPrice = unitPrice;
+            this.quantity = quantity;
+        }
+
+        public String getCategoryName() { return categoryName; }
+        public void setCategoryName(String categoryName) { this.categoryName = categoryName; }
+
+        public String getProductName() { return productName; }
+        public void setProductName(String productName) { this.productName = productName; }
+
+        public int getUnitPrice() { return unitPrice; }
+        public void setUnitPrice(int unitPrice) { this.unitPrice = unitPrice; }
+
+        public int getQuantity() { return quantity; }
+        public void setQuantity(int quantity) { this.quantity = quantity; }
+
+        public int getLineTotal() { return unitPrice * quantity; }
+    }
+
+    private final List<Item> items = new ArrayList<>();
+
+    public void addItem(Item item) {
+        if (item != null) items.add(item);
+    }
+
+    public void addItem(String categoryName, String productName, int unitPrice, int quantity) {
+        items.add(new Item(categoryName, productName, unitPrice, quantity));
+    }
+
+    public void removeItemAt(int index) {
+        if (index >= 0 && index < items.size()) items.remove(index);
+    }
+
+    public List<Item> getItems() { return items; }
+
+    public int getTotalAmount() {
+        int sum = 0;
+        for (Item it : items) sum += it.getLineTotal();
+        return sum;
+    }
+
+    public void clear() { items.clear(); }
+}

@@ -1,0 +1,357 @@
+package controller;
+
+import model.Goods;
+import model.Member;
+import service.GoodsService;
+import service.impl.GoodsServiceImpl;
+import util.ChangeTool;
+import util.Tool;
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.util.*;
+
+/**
+ * 每個商品類別獨立一格的購買頁，含 9 折與結帳後自動列印清單。
+ */
+public class OrderUi extends JFrame {
+    private static final long serialVersionUID = 1L;
+
+    // ---- 上方「每類別一格」元件 ----
+    private final Map<String, java.util.List<ProductItem>> productData = new LinkedHashMap<>();
+    private final java.util.List<ProductPanel> productPanels = new ArrayList<>();
+
+    // ---- 中段購物清單 ----
+    private JTable table;
+    private DefaultTableModel tableModel;
+
+    // ---- 下方總計區 ----
+    private JLabel lblTotal;
+    private JCheckBox chkDiscount; // 9 折
+
+    // ---- 資料物件 ----
+    private final Order order = new Order();
+
+    // ---- 列印清單快照（讓你可重印上一張）----
+    private java.util.List<Order.Item> lastSnapshot = Collections.emptyList();
+    private int lastTotalPay = 0, lastCash = 0, lastChange = 0;
+    private String lastRecordTime = null;
+    private Member lastMember = null;
+
+    // ---- 小型產品結構 ----
+    private static class ProductItem {
+        String name; int price;
+        ProductItem(String name, int price){ this.name=name; this.price=price; }
+        public String toString(){ return name; }
+    }
+
+    public OrderUi() {
+        setTitle("購買電腦（獨立選格 + 9折 + 列印清單）");
+        setSize(900, 820);
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(null); // 保留你慣用的 null layout + setBounds
+
+        setupProducts();
+        buildTopProductGrid();    // 上方每類別一格
+        buildMiddleTable();       // 中段購物清單
+        buildBottomBar();         // 下方總計/折扣/結帳
+    }
+
+    // 準備一些示範產品
+    private void setupProducts() {
+        productData.put("CPU", Arrays.asList(
+                new ProductItem("Ryzen 5 5600", 6000),
+                new ProductItem("Intel Core i5-12400F", 5200)
+        ));
+        productData.put("主機板", Arrays.asList(
+                new ProductItem("B550M-PLUS", 3200),
+                new ProductItem("B760M-PRO", 4200)
+        ));
+        productData.put("記憶體", Arrays.asList(
+                new ProductItem("DDR4 16GB(8x2) 3200", 1200),
+                new ProductItem("DDR5 32GB(16x2) 5600", 2900)
+        ));
+        productData.put("顯示卡", Arrays.asList(
+                new ProductItem("RTX 4060 8GB", 9800),
+                new ProductItem("RX 7600 8GB", 8500)
+        ));
+        productData.put("SSD", Arrays.asList(
+                new ProductItem("NVMe 1TB", 2100),
+                new ProductItem("SATA 512GB", 900)
+        ));
+        productData.put("電源", Arrays.asList(
+                new ProductItem("550W 80+ Bronze", 1700),
+                new ProductItem("650W 80+ Gold", 2600)
+        ));
+        productData.put("機殼", Arrays.asList(
+                new ProductItem("ATX 風冷透明側板", 1500),
+                new ProductItem("mATX 小機殼", 1200)
+        ));
+    }
+
+    // 建立「每類別一格」區塊（2 欄網格）
+    private void buildTopProductGrid() {
+        JPanel grid = new JPanel(null);
+        grid.setBounds(20, 20, 860, 360);
+        add(grid);
+
+        int colW = 400;    // 每格寬
+        int rowH = 90;     // 每格高
+        int gapX = 20, gapY = 10;
+        int colX1 = 0, colX2 = colW + gapX;
+
+        int index = 0;
+        for (Map.Entry<String, java.util.List<ProductItem>> e : productData.entrySet()) {
+            String cat = e.getKey();
+            java.util.List<ProductItem> items = e.getValue();
+
+            int row = index / 2;
+            int col = index % 2;
+            int x = (col == 0) ? colX1 : colX2;
+            int y = row * (rowH + gapY);
+
+            ProductPanel pp = new ProductPanel(cat, items);
+            pp.setBounds(x, y, colW, rowH);
+            grid.add(pp);
+            productPanels.add(pp);
+
+            index++;
+        }
+    }
+
+    // 購物清單表格
+    private void buildMiddleTable() {
+        String[] cols = {"類別", "產品名稱", "單價", "數量", "小計"};
+        tableModel = new DefaultTableModel(cols, 0) {
+            public boolean isCellEditable(int r, int c) { return false; }
+        };
+        table = new JTable(tableModel);
+        JScrollPane sp = new JScrollPane(table);
+        sp.setBounds(20, 390, 860, 250);
+        add(sp);
+
+        JButton btnDelete = new JButton("刪除選取");
+        btnDelete.setBounds(20, 650, 120, 28);
+        add(btnDelete);
+        btnDelete.addActionListener(e -> deleteSelectedRow());
+    }
+
+    // 總計、折扣、結帳列
+    private void buildBottomBar() {
+        chkDiscount = new JCheckBox("9 折");
+        chkDiscount.setBounds(160, 650, 70, 28);
+        add(chkDiscount);
+        chkDiscount.addActionListener(e -> recalcTotal()); // 切換即重算
+
+        lblTotal = new JLabel("應付總額：$0");
+        lblTotal.setBounds(20, 690, 300, 32);
+        lblTotal.setFont(lblTotal.getFont().deriveFont(Font.BOLD, 16f));
+        add(lblTotal);
+
+        JButton btnPrintReceipt = new JButton("列印上一張");
+        btnPrintReceipt.setBounds(610, 690, 120, 32);
+        add(btnPrintReceipt);
+        btnPrintReceipt.addActionListener(e -> openLastReceipt());
+
+        JButton btnPaySave = new JButton("付款 / 存檔(找零)");
+        btnPaySave.setBounds(740, 690, 140, 32);
+        add(btnPaySave);
+        btnPaySave.addActionListener(e -> doPayAndSave());
+    }
+
+    // 刪除表格選取列（並重算總金額）
+    private void deleteSelectedRow() {
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "請先選取要刪除的列");
+            return;
+        }
+        tableModel.removeRow(row);
+        order.removeItemAt(row);
+        recalcTotal(); // ★ 重算避免 9 折殘值問題
+    }
+
+    // 重新計算總金額（含 9 折）
+    private void recalcTotal() {
+        int subtotal = 0;
+        for (Order.Item it : order.getItems()) subtotal += it.getLineTotal();
+        int pay = chkDiscount.isSelected() ? (int)Math.round(subtotal * 0.9) : subtotal;
+        lblTotal.setText("應付總額：" + (chkDiscount.isSelected() ? "(9折) $" : "$") + pay);
+    }
+
+    // 結帳 + 存檔 + 自動跳出列印清單
+    private void doPayAndSave() {
+        int subtotal = 0;
+        for (Order.Item it : order.getItems()) subtotal += it.getLineTotal();
+        if (subtotal <= 0) {
+            JOptionPane.showMessageDialog(this, "尚未加入任何商品");
+            return;
+        }
+        int totalPay = chkDiscount.isSelected() ? (int)Math.round(subtotal * 0.9) : subtotal;
+
+        String s = JOptionPane.showInputDialog(this, "請輸入付款金額（整數）", String.valueOf(totalPay));
+        if (s == null) return;
+
+        int cash;
+        try { cash = Integer.parseInt(s.trim()); }
+        catch (Exception ex) { JOptionPane.showMessageDialog(this, "金額格式不正確"); return; }
+
+        if (cash < totalPay) {
+            JOptionPane.showMessageDialog(this, "付款金額不足（應付 $" + totalPay + "）");
+            return;
+        }
+        int change = cash - totalPay;
+
+        // 取得登入會員
+        Member m = null;
+        Integer memberId = null;
+        try {
+            m = Tool.loadMember();
+            if (m != null) memberId = m.getId();
+        } catch (Exception ignore) {}
+
+        // 快照（給列印與避免清空後無資料）
+        java.util.List<Order.Item> snapshot = new java.util.ArrayList<>(order.getItems());
+        String recordTime = new java.text.SimpleDateFormat("yyyy/MM/dd HH:mm:ss").format(new java.util.Date());
+
+        // 寫入資料庫（每項一筆 goods），order_total 寫入折扣後金額
+        GoodsService svc = new GoodsServiceImpl();
+        for (Order.Item it : snapshot) {
+            Goods g = new Goods();
+            g.setMemberId(memberId);
+            g.setCategoryName(it.getCategoryName());
+            g.setProductName(it.getProductName());
+            g.setUnitPrice(it.getUnitPrice());
+            g.setQuantity(it.getQuantity());
+            g.setLineTotal(it.getLineTotal());
+            g.setOrderTotal(totalPay); // ★ 折扣後總額
+            g.setPaidCash(cash);
+            g.setChangeAmount(change);
+            svc.save(g);
+        }
+
+        // 保存最後一張收據資料，並自動開啟列印清單
+        lastSnapshot = snapshot;
+        lastTotalPay = totalPay;
+        lastCash = cash;
+        lastChange = change;
+        lastRecordTime = recordTime;
+        lastMember = m;
+
+        // 自動開收據視窗
+        new PrintReceipt(m, snapshot, totalPay, cash, change, recordTime).setVisible(true);
+
+        // 顯示找零分解
+        JOptionPane.showMessageDialog(this, ChangeTool.breakdown(change), "找零明細", JOptionPane.INFORMATION_MESSAGE);
+
+        // 清空購物車
+        order.clear();
+        tableModel.setRowCount(0);
+        recalcTotal();
+    }
+
+    // 打開上一張收據（可重印）
+    private void openLastReceipt() {
+        if (lastSnapshot == null || lastSnapshot.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "目前沒有可列印的訂單，請先結帳。");
+            return;
+        }
+        new PrintReceipt(lastMember, lastSnapshot, lastTotalPay, lastCash, lastChange, lastRecordTime).setVisible(true);
+    }
+
+    // ===== 內部類別：一格商品選取面板 =====
+    private class ProductPanel extends JPanel {
+        private static final long serialVersionUID = 1L;
+
+        private final String categoryName;
+        private final java.util.List<ProductItem> items;
+
+        private JComboBox<String> cboProduct;
+        private JTextField txtPrice;
+        private JSpinner spQty;
+
+        ProductPanel(String categoryName, java.util.List<ProductItem> items) {
+            this.categoryName = categoryName;
+            this.items = items;
+            setLayout(null);
+            setBorder(BorderFactory.createTitledBorder(categoryName));
+
+            JLabel l1 = new JLabel("產品：");
+            l1.setBounds(10, 20, 40, 22);
+            add(l1);
+
+            cboProduct = new JComboBox<>();
+            cboProduct.setBounds(55, 20, 160, 22);
+            add(cboProduct);
+
+            JLabel l2 = new JLabel("單價：");
+            l2.setBounds(225, 20, 40, 22);
+            add(l2);
+
+            txtPrice = new JTextField();
+            txtPrice.setBounds(270, 20, 70, 22);
+            txtPrice.setHorizontalAlignment(SwingConstants.RIGHT);
+            txtPrice.setEditable(false);
+            add(txtPrice);
+
+            JLabel l3 = new JLabel("數量：");
+            l3.setBounds(10, 50, 40, 22);
+            add(l3);
+
+            spQty = new JSpinner(new SpinnerNumberModel(1, 1, 99, 1));
+            spQty.setBounds(55, 50, 60, 22);
+            add(spQty);
+
+            JButton btnAdd = new JButton("加入");
+            btnAdd.setBounds(270, 50, 70, 24);
+            add(btnAdd);
+
+            // 載入產品
+            for (ProductItem p : items) cboProduct.addItem(p.name);
+            syncPrice();
+            cboProduct.addActionListener(e -> syncPrice());
+            btnAdd.addActionListener(e -> addToCart());
+        }
+
+        private void syncPrice() {
+            String prod = (String) cboProduct.getSelectedItem();
+            if (prod == null) { txtPrice.setText(""); return; }
+            for (ProductItem p : items) {
+                if (p.name.equals(prod)) {
+                    txtPrice.setText(String.valueOf(p.price));
+                    return;
+                }
+            }
+            txtPrice.setText("");
+        }
+
+        private void addToCart() {
+            String prod = (String) cboProduct.getSelectedItem();
+            int price;
+            try { price = Integer.parseInt(txtPrice.getText().trim()); }
+            catch (Exception ex) { JOptionPane.showMessageDialog(OrderUi.this, "單價格式錯誤"); return; }
+
+            int qty = (int) spQty.getValue();
+            if (qty <= 0) { JOptionPane.showMessageDialog(OrderUi.this, "數量必須大於 0"); return; }
+
+            int line = price * qty;
+
+            // 加到表格
+            tableModel.addRow(new Object[]{categoryName, prod, price, qty, line});
+
+            // 加到 Order
+            order.addItem(new Order.Item(categoryName, prod, price, qty));
+
+            // 重算總額（含 9 折）
+            recalcTotal();
+        }
+    }
+
+    // 可單獨執行測試此畫面
+    public static void main(String[] args) {
+        try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignore) {}
+        EventQueue.invokeLater(() -> new OrderUi().setVisible(true));
+    }
+}

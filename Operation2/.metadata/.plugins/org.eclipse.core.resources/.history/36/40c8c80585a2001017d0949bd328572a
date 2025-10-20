@@ -1,0 +1,23 @@
+package controller;
+
+import controller.OrderUi;     // 直接開你原本的購買頁（WindowBuilder 版）
+import model.Member;
+import util.Tool;
+
+public class PurchaseLauncher {
+    private final Member loginMember;
+
+    public PurchaseLauncher(Member m) {
+        this.loginMember = m;
+    }
+
+    public void open() {
+        try { 
+            // 再次保存一次會員（保險起見，購物頁可用 Tool.loadMember() 取得）
+            if (loginMember != null) Tool.saveMember(loginMember);
+        } catch (Exception ignore) {}
+
+        // 開啟你的購買頁
+        new OrderUi().setVisible(true);
+    }
+}

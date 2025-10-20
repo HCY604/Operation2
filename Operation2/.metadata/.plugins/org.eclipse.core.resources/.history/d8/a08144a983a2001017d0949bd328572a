@@ -1,0 +1,42 @@
+package controller;
+
+import model.Member;
+
+import javax.swing.*;
+
+public class LoginSuccess extends JFrame {
+    private final Member loginMember;
+
+    public LoginSuccess(Member m) {
+        this.loginMember = m;
+
+        setTitle("登入成功");
+        setSize(380, 220);
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(null);
+
+        String nickname = (m.getName() != null && !m.getName().isEmpty()) ? m.getName() : m.getUsername();
+        JLabel lbl = new JLabel("歡迎，" + nickname + "！");
+        lbl.setBounds(30, 40, 320, 30);
+        add(lbl);
+
+        JButton btnGo = new JButton("前往購買電腦");
+        btnGo.setBounds(30, 90, 140, 30);
+        add(btnGo);
+
+        JButton btnLogout = new JButton("登出");
+        btnLogout.setBounds(190, 90, 140, 30);
+        add(btnLogout);
+
+        btnGo.addActionListener(e -> {
+            new PurchaseLauncher(loginMember).open();
+            dispose();
+        });
+
+        btnLogout.addActionListener(e -> {
+            new Login().setVisible(true);
+            dispose();
+        });
+    }
+}

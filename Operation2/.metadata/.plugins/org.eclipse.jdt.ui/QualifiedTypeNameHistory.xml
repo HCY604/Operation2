@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<qualifiedTypeNameHistroy>
+    <fullyQualifiedTypeName name="dao.GoodsDao"/>
+    <fullyQualifiedTypeName name="service.GoodsService"/>
+    <fullyQualifiedTypeName name="dao.MemberDao"/>
+    <fullyQualifiedTypeName name="service.MemberService"/>
+    <fullyQualifiedTypeName name="service.impl.MemberServiceImpl"/>
+</qualifiedTypeNameHistroy>

@@ -1,0 +1,21 @@
+package controller;
+
+import model.Member;
+import util.Tool;
+
+public class PurchaseLauncher {
+    private final Member loginMember;
+
+    public PurchaseLauncher(Member m) {
+        this.loginMember = m;
+    }
+
+    public void open() {
+        try {
+            if (loginMember != null) Tool.saveMember(loginMember);
+        } catch (Exception ignore) {}
+
+        // 同一個 package，直接使用即可，無需 import controller.OrderUi
+        new OrderUi().setVisible(true);
+    }
+}

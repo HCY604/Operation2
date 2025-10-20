@@ -1,0 +1,26 @@
+package util;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+
+public class DbConnection {
+
+    // 完全使用你提供的實際值（不加其他參數）
+    private static final String URL = "jdbc:mysql://localhost:3306/computer";
+    private static final String USER = "root";
+    private static final String PASSWORD = "1234";
+
+    // 共用連線（避免每次都新建）
+    private static Connection conn;
+
+    public static Connection getDb() {
+        if (conn != null) return conn;
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            conn = DriverManager.getConnection(URL, USER, PASSWORD);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return conn;
+    }
+}
